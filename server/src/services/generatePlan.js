@@ -26,7 +26,7 @@ export async function generateTripPlan(trip) {
       headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "2092fc" },
       body: JSON.stringify({
         sessionId: "2092fc",
-        runId: "post-fix",
+        runId: "post-fix-2",
         hypothesisId: "H",
         location: "server/src/services/generatePlan.js:catch",
         message: "llm_failed_using_fallback",
@@ -35,20 +35,9 @@ export async function generateTripPlan(trip) {
       }),
     }).catch(() => {});
     // #endregion
-    if (err.code !== "NO_LLM_KEY") {
-      try {
-        raw = await callLlm(buildPrompt(trip, coords, forecast));
-        llmError = "";
-      } catch (retryErr) {
-        console.warn("LLM failed, using weather-aware fallback:", retryErr.message);
-        raw = buildFallbackPlan(trip, forecast);
-        source = "fallback";
-        llmError = retryErr.message || llmError;
-      }
-    } else {
-      raw = buildFallbackPlan(trip, forecast);
-      source = "fallback";
-    }
+    console.warn("LLM failed, using weather-aware fallback:", llmError);
+    raw = buildFallbackPlan(trip, forecast);
+    source = "fallback";
   }
 
   const plan = validatePlan(raw, trip, forecast);

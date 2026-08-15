@@ -8,6 +8,19 @@ function money(currency, amount) {
   return `${currency} ${n.toLocaleString()}`;
 }
 
+function planNotice(trip) {
+  if (trip.generationSource === "llm") {
+    return "Itinerary generated with Gemini from your preferences and the forecast.";
+  }
+  if (trip.generationSource === "fallback") {
+    if (trip.generationError) {
+      return `Gemini is busy or the model failed (${trip.generationError}). Showing a weather-based plan — click Regenerate.`;
+    }
+    return "Weather-based plan (Gemini was not used). Click Regenerate itinerary.";
+  }
+  return "";
+}
+
 export default function TripDetail() {
   const { id } = useParams();
   const location = useLocation();
@@ -25,7 +38,11 @@ export default function TripDetail() {
 
   useEffect(() => {
     api(`/api/trips/${id}`)
-      .then((data) => setTrip(data.trip))
+      .then((data) => {
+        setTrip(data.trip);
+        const msg = planNotice(data.trip);
+        if (msg) setNotice(msg);
+      })
       .catch((err) => setError(err.message));
   }, [id]);
 
@@ -38,13 +55,7 @@ export default function TripDetail() {
         timeoutMs: 120000,
       });
       setTrip(data.trip);
-      setNotice(
-        data.trip.generationSource === "fallback"
-          ? data.trip.generationError
-            ? `Used weather fallback. Gemini error: ${data.trip.generationError}`
-            : "Plan generated with weather data. Add GEMINI_API_KEY in server/.env and restart the API."
-          : "Itinerary generated with Gemini from your preferences and the forecast."
-      );
+      setNotice(planNotice(data.trip));
     } catch (err) {
       setError(err.message);
     } finally {

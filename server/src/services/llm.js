@@ -123,50 +123,55 @@ function inferProvider() {
 async function callGemini(prompt, key) {
   const models = [
     process.env.LLM_MODEL,
+    "gemini-flash-latest",
+    "gemini-pro-latest",
     "gemini-2.5-flash",
     "gemini-2.5-flash-lite",
-    "gemini-flash-latest",
   ].filter((m, i, arr) => m && arr.indexOf(m) === i);
 
   let lastError = "Gemini request failed.";
   for (const model of models) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.7, responseMimeType: "application/json" },
-      }),
-    });
-    const data = await res.json();
-    // #region agent log
-    fetch("http://127.0.0.1:7369/ingest/c9f5dc73-89b9-479e-9ca9-c3637fc39ab6", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "2092fc" },
-      body: JSON.stringify({
-        sessionId: "2092fc",
-        runId: "post-fix",
-        hypothesisId: "H",
-        location: "server/src/services/llm.js:callGemini",
-        message: "gemini_http_result",
-        data: {
-          model,
-          status: res.status,
-          ok: res.ok,
-          err: data.error?.message || "",
-          hasText: Boolean(data.candidates?.[0]?.content?.parts?.[0]?.text),
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-    if (!res.ok) {
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.7, responseMimeType: "application/json" },
+        }),
+      });
+      const data = await res.json();
+      // #region agent log
+      fetch("http://127.0.0.1:7369/ingest/c9f5dc73-89b9-479e-9ca9-c3637fc39ab6", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "2092fc" },
+        body: JSON.stringify({
+          sessionId: "2092fc",
+          runId: "post-fix-2",
+          hypothesisId: "H",
+          location: "server/src/services/llm.js:callGemini",
+          message: "gemini_http_result",
+          data: {
+            model,
+            attempt,
+            status: res.status,
+            ok: res.ok,
+            err: data.error?.message || "",
+            hasText: Boolean(data.candidates?.[0]?.content?.parts?.[0]?.text),
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion
+      if (res.ok) {
+        const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text).join("") || "";
+        return extractJson(text);
+      }
       lastError = data.error?.message || lastError;
-      continue;
+      if (res.status === 404) break;
+      if (res.status !== 503 && res.status !== 429) break;
     }
-    const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text).join("") || "";
-    return extractJson(text);
   }
   throw new Error(lastError);
 }
